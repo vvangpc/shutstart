@@ -7,7 +7,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-CONFIG_VERSION = 3
+CONFIG_VERSION = 4
 DEFAULT_THEME = "claude"
 VALID_THEMES = {"claude", "mac"}
 
@@ -42,6 +42,7 @@ def default_config() -> dict[str, Any]:
         "countdown_seconds": DEFAULT_COUNTDOWN_SECONDS,
         "a_list": [],
         "b_list": [],
+        "show_service_startups": False,
     }
 
 
@@ -104,6 +105,10 @@ def _migrate(cfg: dict[str, Any]) -> dict[str, Any]:
     cfg["countdown_seconds"] = clamp_countdown(
         cfg.get("countdown_seconds", DEFAULT_COUNTDOWN_SECONDS)
     )
+
+    # v3 → v4: add startup-manager filter preference.
+    if not isinstance(cfg.get("show_service_startups"), bool):
+        cfg["show_service_startups"] = False
 
     for item in cfg["a_list"]:
         item.setdefault("default_checked", True)
