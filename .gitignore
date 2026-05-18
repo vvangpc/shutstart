@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+env/
+build/
+dist/
+*.spec.bak
+.vscode/
+.idea/
+*.log
+shutstart/resources/*.preview.png

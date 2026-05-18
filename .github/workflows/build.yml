@@ -1,0 +1,72 @@
+name: Build Installer
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install runtime dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install build dependencies
+        run: pip install -r requirements-build.txt
+
+      - name: Generate theme icons
+        run: python tools/make_icons.py
+
+      - name: Build with PyInstaller (--onedir)
+        run: pyinstaller --clean --noconfirm build.spec
+
+      - name: Verify PyInstaller output
+        shell: pwsh
+        run: |
+          if (-not (Test-Path 'dist\ShutStart\ShutStart.exe')) {
+            Write-Error 'PyInstaller did not produce dist\ShutStart\ShutStart.exe'
+            exit 1
+          }
+          Get-ChildItem dist\ShutStart | Select-Object -First 20
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Compile installer
+        shell: pwsh
+        run: |
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) {
+            $iscc = 'C:\Program Files\Inno Setup 6\ISCC.exe'
+          }
+          & $iscc installer\setup.iss
+          if (-not (Test-Path 'dist\ShutStart-Setup.exe')) {
+            Write-Error 'Inno Setup did not produce dist\ShutStart-Setup.exe'
+            exit 1
+          }
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ShutStart-Setup
+          path: dist\ShutStart-Setup.exe
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist\ShutStart-Setup.exe
+          generate_release_notes: true
