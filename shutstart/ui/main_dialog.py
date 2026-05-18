@@ -81,8 +81,11 @@ class MainDialog(QDialog):
         splitter.setSizes([380, 380])
         outer.addWidget(splitter, 1)
 
-        # Bottom buttons.
+        # Bottom row: countdown label (left) + buttons (right).
         bottom = QHBoxLayout()
+        self.countdown_label = QLabel("")
+        self.countdown_label.setStyleSheet("background: transparent; color: #888;")
+        bottom.addWidget(self.countdown_label, 0, Qt.AlignLeft | Qt.AlignVCenter)
         bottom.addStretch(1)
         confirm_btn = QPushButton("确认")
         confirm_btn.setDefault(True)
@@ -94,6 +97,21 @@ class MainDialog(QDialog):
         bottom.addWidget(confirm_btn)
         bottom.addWidget(cancel_btn)
         outer.addLayout(bottom)
+
+        # Countdown auto-cancel timer.
+        self._countdown_total = config.clamp_countdown(
+            self._cfg.get("countdown_seconds", config.DEFAULT_COUNTDOWN_SECONDS)
+        )
+        self._countdown_enabled = bool(self._cfg.get("countdown_enabled", True))
+        self._countdown_remaining = self._countdown_total
+        self._countdown_timer = QTimer(self)
+        self._countdown_timer.setInterval(1000)
+        self._countdown_timer.timeout.connect(self._on_countdown_tick)
+        if self._countdown_enabled:
+            self._update_countdown_label()
+            self._countdown_timer.start()
+        else:
+            self.countdown_label.setVisible(False)
 
     # -------------------- A group (left) --------------------
     def _build_a_group(self) -> QGroupBox:
@@ -218,15 +236,55 @@ class MainDialog(QDialog):
         lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         return lbl
 
+    # -------------------- Countdown --------------------
+    def _update_countdown_label(self) -> None:
+        if not self._countdown_enabled:
+            return
+        m, s = divmod(max(0, self._countdown_remaining), 60)
+        self.countdown_label.setText(f"⏱ {m:02d}:{s:02d} 后自动取消")
+        if self._countdown_remaining <= 10:
+            self.countdown_label.setStyleSheet(
+                "background: transparent; color: #c0392b; font-weight: 600;"
+            )
+        else:
+            self.countdown_label.setStyleSheet("background: transparent; color: #888;")
+
+    def _on_countdown_tick(self) -> None:
+        self._countdown_remaining -= 1
+        if self._countdown_remaining <= 0:
+            self._countdown_timer.stop()
+            log.info("Countdown elapsed; auto-cancelling main dialog.")
+            self.reject()
+            return
+        self._update_countdown_label()
+
+    def _pause_countdown(self) -> None:
+        if self._countdown_timer.isActive():
+            self._countdown_timer.stop()
+
+    def _resume_countdown_fresh(self) -> None:
+        if not self._countdown_enabled:
+            return
+        self._countdown_remaining = self._countdown_total
+        self._update_countdown_label()
+        self._countdown_timer.start()
+
     # -------------------- Actions --------------------
     def _open_settings(self) -> None:
-        dlg = SettingsDialog(self)
-        if dlg.exec_() == QDialog.Accepted:
-            QMessageBox.information(
-                self,
-                "已保存",
-                "设置已保存。请关闭当前窗口后重新启动 ShutStart 以应用新配置。",
-            )
+        # Pause the countdown while the user is interacting with settings.
+        self._pause_countdown()
+        try:
+            dlg = SettingsDialog(self)
+            accepted = dlg.exec_() == QDialog.Accepted
+            if accepted:
+                QMessageBox.information(
+                    self,
+                    "已保存",
+                    "设置已保存。请关闭当前窗口后重新启动 ShutStart 以应用新配置。",
+                )
+        finally:
+            # Resume with a fresh countdown so the user has full time again.
+            self._resume_countdown_fresh()
 
     def _on_confirm(self) -> None:
         a_to_kill: list = []
@@ -242,6 +300,9 @@ class MainDialog(QDialog):
         if not a_to_kill and not b_to_launch:
             QMessageBox.information(self, "没有可执行的操作", "你没有勾选任何项目。")
             return
+
+        # User is committing to an action — stop the auto-cancel countdown.
+        self._pause_countdown()
 
         progress = QProgressDialog("正在执行…", "", 0, 0, self)
         progress.setWindowTitle("ShutStart")
@@ -260,6 +321,8 @@ class MainDialog(QDialog):
         self._show_summary(kill_report, launch_report)
 
     def done(self, result: int) -> None:
+        if self._countdown_timer.isActive():
+            self._countdown_timer.stop()
         try:
             config.set_window_size(DIALOG_NAME, self.width(), self.height())
         except OSError:

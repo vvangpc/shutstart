@@ -7,9 +7,14 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-CONFIG_VERSION = 2
+CONFIG_VERSION = 3
 DEFAULT_THEME = "claude"
 VALID_THEMES = {"claude", "mac"}
+
+# Countdown range — UI auto-cancel timer for the main boot dialog.
+COUNTDOWN_MIN = 30
+COUNTDOWN_MAX = 600
+DEFAULT_COUNTDOWN_SECONDS = 60
 
 
 def appdata_dir() -> Path:
@@ -33,9 +38,20 @@ def default_config() -> dict[str, Any]:
         "autostart_enabled": True,
         "theme": DEFAULT_THEME,
         "window_state": {},
+        "countdown_enabled": True,
+        "countdown_seconds": DEFAULT_COUNTDOWN_SECONDS,
         "a_list": [],
         "b_list": [],
     }
+
+
+def clamp_countdown(value: Any) -> int:
+    """Coerce an arbitrary value into the valid countdown range."""
+    try:
+        v = int(value)
+    except (TypeError, ValueError):
+        return DEFAULT_COUNTDOWN_SECONDS
+    return max(COUNTDOWN_MIN, min(COUNTDOWN_MAX, v))
 
 
 def load() -> dict[str, Any]:
@@ -82,6 +98,12 @@ def _migrate(cfg: dict[str, Any]) -> dict[str, Any]:
         cfg["theme"] = DEFAULT_THEME
     if not isinstance(cfg.get("window_state"), dict):
         cfg["window_state"] = {}
+
+    # v2 → v3: add countdown auto-cancel.
+    cfg.setdefault("countdown_enabled", True)
+    cfg["countdown_seconds"] = clamp_countdown(
+        cfg.get("countdown_seconds", DEFAULT_COUNTDOWN_SECONDS)
+    )
 
     for item in cfg["a_list"]:
         item.setdefault("default_checked", True)

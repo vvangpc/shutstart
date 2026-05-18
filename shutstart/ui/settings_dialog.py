@@ -23,6 +23,7 @@ from PyQt5.QtWidgets import (
     QMenu,
     QMessageBox,
     QPushButton,
+    QSpinBox,
     QSplitter,
     QToolButton,
     QVBoxLayout,
@@ -98,6 +99,38 @@ class SettingsDialog(QDialog):
         top_row.addWidget(self.theme_combo)
 
         outer.addLayout(top_row)
+
+        # Countdown row.
+        countdown_row = QHBoxLayout()
+        self.countdown_cb = QCheckBox("关闭倒计时")
+        self.countdown_cb.setChecked(bool(self._cfg.get("countdown_enabled", True)))
+        self.countdown_cb.setToolTip(
+            "主对话框打开后,如果未操作,倒计时归零时自动取消并关闭程序"
+        )
+        countdown_row.addWidget(self.countdown_cb)
+
+        self.countdown_spin = QSpinBox()
+        self.countdown_spin.setRange(config.COUNTDOWN_MIN, config.COUNTDOWN_MAX)
+        self.countdown_spin.setValue(
+            config.clamp_countdown(
+                self._cfg.get("countdown_seconds", config.DEFAULT_COUNTDOWN_SECONDS)
+            )
+        )
+        self.countdown_spin.setSuffix(" 秒")
+        self.countdown_spin.setSingleStep(10)
+        self.countdown_spin.setFixedWidth(110)
+        self.countdown_spin.setEnabled(self.countdown_cb.isChecked())
+        self.countdown_cb.toggled.connect(self.countdown_spin.setEnabled)
+        countdown_row.addWidget(self.countdown_spin)
+
+        countdown_hint = QLabel(
+            f"(范围 {config.COUNTDOWN_MIN}–{config.COUNTDOWN_MAX} 秒,即 30 秒至 10 分钟;"
+            "归零后自动取消执行并关闭程序)"
+        )
+        countdown_hint.setStyleSheet("color: #888; background: transparent;")
+        countdown_row.addWidget(countdown_hint)
+        countdown_row.addStretch(1)
+        outer.addLayout(countdown_row)
 
         # Middle: two lists in a splitter + button column on the right.
         middle = QHBoxLayout()
@@ -337,6 +370,8 @@ class SettingsDialog(QDialog):
         self._cfg["b_list"] = self._b_items
         self._cfg["autostart_enabled"] = self.autostart_cb.isChecked()
         self._cfg["theme"] = self.theme_combo.currentData() or themes.DEFAULT_THEME
+        self._cfg["countdown_enabled"] = self.countdown_cb.isChecked()
+        self._cfg["countdown_seconds"] = config.clamp_countdown(self.countdown_spin.value())
         try:
             config.save(self._cfg)
         except OSError as e:
