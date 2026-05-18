@@ -44,6 +44,26 @@ jobs:
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
 
+      - name: Install Chinese Simplified language file for Inno Setup
+        shell: pwsh
+        run: |
+          $url = "https://raw.githubusercontent.com/jrsoftware/issrc/main/Files/Languages/Unofficial/ChineseSimplified.isl"
+          $dst1 = "C:\Program Files (x86)\Inno Setup 6\Languages\ChineseSimplified.isl"
+          $dst2 = "C:\Program Files\Inno Setup 6\Languages\ChineseSimplified.isl"
+          $written = $false
+          foreach ($dst in @($dst1, $dst2)) {
+            $parent = Split-Path $dst -Parent
+            if (Test-Path $parent) {
+              Invoke-WebRequest -Uri $url -OutFile $dst -UseBasicParsing
+              Write-Host "Installed: $dst"
+              $written = $true
+            }
+          }
+          if (-not $written) {
+            Write-Error "No Inno Setup Languages folder found"
+            exit 1
+          }
+
       - name: Compile installer
         shell: pwsh
         run: |
