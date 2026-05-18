@@ -84,6 +84,14 @@ class SettingsDialog(QDialog):
         self.autostart_cb = QCheckBox("开机自动启动 ShutStart (写入 HKCU\\Run 注册表)")
         self.autostart_cb.setChecked(bool(self._cfg.get("autostart_enabled", True)))
         top_row.addWidget(self.autostart_cb)
+
+        self.startup_mgr_btn = QPushButton("本机启动项管理…")
+        self.startup_mgr_btn.setToolTip(
+            "查看并启用/禁用 Windows Run 注册表与启动文件夹中的自启动条目"
+        )
+        self.startup_mgr_btn.clicked.connect(self._on_open_startup_manager)
+        top_row.addWidget(self.startup_mgr_btn)
+
         top_row.addStretch(1)
 
         theme_label = QLabel("外观主题:")
@@ -353,6 +361,11 @@ class SettingsDialog(QDialog):
             lw.setCurrentRow(-1)
             self._current_kind = None
         self._update_button_states()
+
+    # -------------------- Startup manager --------------------
+    def _on_open_startup_manager(self) -> None:
+        from .startup_manager_dialog import StartupManagerDialog
+        StartupManagerDialog(self).exec_()
 
     # -------------------- Theme --------------------
     def _on_theme_changed(self, _idx: int) -> None:
