@@ -1,4 +1,4 @@
-"""Settings dialog: side-by-side A/B lists, shared right-side button column."""
+"""Settings dialog: A/B lists, theme, countdown, and entry to startup-item manager."""
 from __future__ import annotations
 
 import copy
