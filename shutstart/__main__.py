@@ -71,8 +71,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.settings or is_empty:
         banner = (
-            "首次使用,请先添加要管理的软件: 上半部分(A 类)是要关闭的,"
-            "下半部分(B 类)是要启动的。\n保存后下次开机会自动弹出主对话框。"
+            "首次使用,请先添加要管理的软件: 左侧 (A 类) 是要关闭的,"
+            "右侧 (B 类) 是要启动的。\n保存后下次开机会自动弹出主对话框。"
             if is_empty
             else None
         )
