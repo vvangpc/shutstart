@@ -12,14 +12,29 @@ version_arg = VERSION_FILE if os.path.isfile(VERSION_FILE) else None
 
 
 a = Analysis(
-    ['shutstart/__main__.py'],
+    ['run_shutstart.py'],
     pathex=['.'],
     binaries=[],
     datas=[
         # Ship the resources folder so themes.icon_path() can find ICOs at runtime.
         ('shutstart/resources', 'shutstart/resources'),
     ],
-    hiddenimports=[],
+    hiddenimports=[
+        'shutstart',
+        'shutstart.__main__',
+        'shutstart.app',
+        'shutstart.autostart',
+        'shutstart.config',
+        'shutstart.killer',
+        'shutstart.launcher',
+        'shutstart.startup_inventory',
+        'shutstart.ui',
+        'shutstart.ui.themes',
+        'shutstart.ui.main_dialog',
+        'shutstart.ui.settings_dialog',
+        'shutstart.ui.startup_manager_dialog',
+        'shutstart.ui.item_editor',
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

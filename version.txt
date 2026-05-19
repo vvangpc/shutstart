@@ -4,8 +4,8 @@
 # Helps reduce AV false positives by giving the binary proper metadata.
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(1, 1, 0, 0),
-    prodvers=(1, 1, 0, 0),
+    filevers=(1, 1, 1, 0),
+    prodvers=(1, 1, 1, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -21,12 +21,12 @@ VSVersionInfo(
           [
             StringStruct(u'CompanyName', u'ShutStart'),
             StringStruct(u'FileDescription', u'ShutStart - Windows 开机启动管理器'),
-            StringStruct(u'FileVersion', u'1.1.0.0'),
+            StringStruct(u'FileVersion', u'1.1.1.0'),
             StringStruct(u'InternalName', u'ShutStart'),
             StringStruct(u'LegalCopyright', u''),
             StringStruct(u'OriginalFilename', u'ShutStart.exe'),
             StringStruct(u'ProductName', u'ShutStart'),
-            StringStruct(u'ProductVersion', u'1.1.0.0')
+            StringStruct(u'ProductVersion', u'1.1.1.0')
           ]
         )
       ]
