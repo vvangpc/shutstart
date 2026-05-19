@@ -15,8 +15,9 @@ Windows 开机启动管理器。开机后弹出一个对话框,左边一键关�
 - **关闭倒计时**: 主对话框打开后,30 秒~10 分钟可调,归零自动取消并退出 (避免开机弹窗忘记处理)
 - **本机启动项管理**: 设置顶栏新增按钮,枚举 `HKCU` / `HKLM` 下 `Run` / `RunOnce` (含 `Wow6432Node`) 和用户/公共启动文件夹的所有自启动条目;启用/禁用走 Windows 任务管理器同款的 `StartupApproved` 软禁用 (`0x02`/`0x03`),原条目保留可恢复;默认屏蔽服务类自启动 (`System32` / `*Service.exe` / `*Update.exe` 等),可通过复选框显示;HKLM / 公共启动项只读 (需要管理员权限)
 - 主题对应图标: 任务栏/窗口图标随主题切换
+- **管理员模式自启 (免 UAC)**: 设置页可勾选"以管理员身份启动 (任务计划器)",改用 Windows 任务计划器 + 登录触发 + 最高权限运行;首次创建/取消时各弹一次 UAC,之后每次开机静默以管理员身份运行,可关闭 SYSTEM 服务进程 (AweSun / ToDesk_Service 等)
 - 配置存 `%APPDATA%\ShutStart\config.json`,日志存 `%APPDATA%\ShutStart\shutstart.log`
-- 自启通过 HKCU Run 注册表 (无需管理员)
+- 自启默认走 HKCU\Run 注册表 (普通用户); 启用管理员模式后改走 `\ShutStart\ShutStart Logon` 任务计划项
 - 安装包用 Inno Setup 打成 `ShutStart-Setup.exe`,安装到 `%LocalAppData%\Programs\ShutStart`,全程无 UAC
 
 ## 安装与使用 (普通用户)
@@ -48,7 +49,7 @@ Windows 开机启动管理器。开机后弹出一个对话框,左边一键关�
 
 ## 已知限制
 
-- 某些远控软件以 **Windows 服务** 形式运行 (例如 `ToDesk_Service.exe`、向日葵新版的 `AweSun.exe` + `awesun_guard.exe`),普通用户权限**无法** `terminate`。如果你需要关掉服务版本,可以右键 ShutStart 选"以管理员身份运行"一次 (或在快捷方式/exe 属性的"兼容性"里永久勾上"以管理员身份运行此程序"),或者在服务管理器里直接禁用服务的自启。
+- 某些远控软件以 **Windows 服务** 形式运行 (例如 `ToDesk_Service.exe`、向日葵新版的 `AweSun.exe` + `awesun_guard.exe`),普通用户权限**无法** `terminate`。推荐做法:在设置里勾上 **"以管理员身份启动 (任务计划器, 免 UAC)"** —— 首次勾选会弹一次 UAC 创建登录任务,之后每次开机 ShutStart 静默以管理员身份运行,可正常 terminate 这类 SYSTEM 服务进程。取消勾选时同样会弹一次 UAC 删除任务。卸载时,若任务残留可手动到 `任务计划程序 → ShutStart → ShutStart Logon` 删除。
 - 程序运行时不再额外提权;每个勾选了"管理员"的 B 项会**独立**弹一次 UAC,这是 Windows 的限制,无法绕过。
 - **本机启动项管理**只接管 `Run` / `RunOnce` 注册表和启动文件夹的"应用类"自启动,不触碰 `HKLM\SYSTEM\CurrentControlSet\Services` 系统服务自启动 —— 服务类需要管理员权限,且改动风险高,留给系统自带的"服务管理器" (`services.msc`) 处理。HKLM 与"公共启动文件夹"中的条目在对话框里只读显示,如需启用/禁用,使用 Windows 自带的"任务管理器 → 启动应用"页并以管理员身份运行。
 

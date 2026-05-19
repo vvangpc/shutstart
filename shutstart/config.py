@@ -36,6 +36,7 @@ def default_config() -> dict[str, Any]:
     return {
         "version": CONFIG_VERSION,
         "autostart_enabled": True,
+        "autostart_admin": False,
         "theme": DEFAULT_THEME,
         "window_state": {},
         "countdown_enabled": True,
@@ -90,6 +91,7 @@ def save(cfg: dict[str, Any]) -> None:
 def _migrate(cfg: dict[str, Any]) -> dict[str, Any]:
     cfg.setdefault("version", CONFIG_VERSION)
     cfg.setdefault("autostart_enabled", True)
+    cfg.setdefault("autostart_admin", False)
     cfg.setdefault("a_list", [])
     cfg.setdefault("b_list", [])
 

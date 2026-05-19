@@ -30,7 +30,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from .. import autostart, config
+from .. import autostart, autostart_task, config
 from . import themes
 from .item_editor import AItemEditor, BItemEditor
 
@@ -81,8 +81,12 @@ class SettingsDialog(QDialog):
 
         # Autostart toggle + theme selector row.
         top_row = QHBoxLayout()
-        self.autostart_cb = QCheckBox("开机自动启动 ShutStart (写入 HKCU\\Run 注册表)")
+        self.autostart_cb = QCheckBox("开机自动启动 ShutStart")
         self.autostart_cb.setChecked(bool(self._cfg.get("autostart_enabled", True)))
+        self.autostart_cb.setToolTip(
+            "勾选后,登录时自动运行 ShutStart (HKCU\\Run 或任务计划器,取决于下方选项)"
+        )
+        self.autostart_cb.toggled.connect(self._on_autostart_toggled)
         top_row.addWidget(self.autostart_cb)
 
         self.startup_mgr_btn = QPushButton("本机启动项管理…")
@@ -107,6 +111,23 @@ class SettingsDialog(QDialog):
         top_row.addWidget(self.theme_combo)
 
         outer.addLayout(top_row)
+
+        # Admin-autostart sub-option (child of autostart_cb).
+        admin_row = QHBoxLayout()
+        admin_row.addSpacing(22)
+        self.autostart_admin_cb = QCheckBox(
+            "以管理员身份启动 (任务计划器, 免 UAC, 可关 SYSTEM 进程)"
+        )
+        self.autostart_admin_cb.setToolTip(
+            "勾选后用任务计划器替代 HKCU\\Run 自启,登录时静默以管理员身份运行 ShutStart,\n"
+            "可正常 terminate AweSun / ToDesk_Service 等 SYSTEM 服务进程。\n"
+            "切换该选项时会弹一次 UAC 用于创建/删除任务,之后每次开机静默。"
+        )
+        self.autostart_admin_cb.setChecked(bool(self._cfg.get("autostart_admin", False)))
+        self.autostart_admin_cb.setEnabled(self.autostart_cb.isChecked())
+        admin_row.addWidget(self.autostart_admin_cb)
+        admin_row.addStretch(1)
+        outer.addLayout(admin_row)
 
         # Countdown row.
         countdown_row = QHBoxLayout()
@@ -367,6 +388,59 @@ class SettingsDialog(QDialog):
         from .startup_manager_dialog import StartupManagerDialog
         StartupManagerDialog(self).exec_()
 
+    # -------------------- Autostart --------------------
+    def _on_autostart_toggled(self, checked: bool) -> None:
+        """Disable the admin sub-option when the parent autostart is off."""
+        self.autostart_admin_cb.setEnabled(checked)
+        if not checked:
+            self.autostart_admin_cb.setChecked(False)
+
+    def _apply_autostart(self, enable_autostart: bool, want_admin: bool) -> tuple[bool, str | None]:
+        """Sync HKCU\\Run and the schtasks logon task to match the requested state.
+
+        Returns (final_admin, warning_msg). final_admin may differ from want_admin
+        if the user denied the UAC prompt — we fall back to HKCU\\Run mode.
+        """
+        prev_admin = bool(self._cfg.get("autostart_admin", False)) and autostart_task.is_enabled()
+
+        if not enable_autostart:
+            # Fully off: clear both autostart sources.
+            try:
+                autostart.disable()
+            except OSError as e:
+                return (False, f"清除 HKCU\\Run 失败:\n{e}")
+            if autostart_task.is_enabled():
+                if not autostart_task.delete():
+                    return (False, "清除任务计划失败 (可能 UAC 被拒绝)。请手动到任务计划程序删除 \\ShutStart\\ShutStart Logon。")
+            return (False, None)
+
+        if want_admin:
+            # Switch to / stay on admin task mode.
+            try:
+                autostart.disable()
+            except OSError as e:
+                return (False, f"清除 HKCU\\Run 失败:\n{e}")
+            if not prev_admin:
+                # Need to (re)create the task — prompts UAC.
+                if not autostart_task.create(autostart.current_exe_path()):
+                    # User denied UAC or schtasks failed. Fall back to user-mode autostart.
+                    try:
+                        autostart.enable()
+                    except OSError:
+                        pass
+                    return (False, "未能创建管理员任务 (UAC 可能被拒绝)。已回退到普通用户自启 (HKCU\\Run)。")
+            return (True, None)
+
+        # User mode: HKCU\\Run.
+        if autostart_task.is_enabled():
+            if not autostart_task.delete():
+                return (False, "未能删除任务计划 (UAC 可能被拒绝)。任务可能仍在生效,请手动到任务计划程序删除。")
+        try:
+            autostart.enable()
+        except OSError as e:
+            return (False, f"写入 HKCU\\Run 失败:\n{e}")
+        return (False, None)
+
     # -------------------- Theme --------------------
     def _on_theme_changed(self, _idx: int) -> None:
         """Live-preview the new theme without persisting yet."""
@@ -381,25 +455,27 @@ class SettingsDialog(QDialog):
     def _on_ok(self) -> None:
         self._cfg["a_list"] = self._a_items
         self._cfg["b_list"] = self._b_items
-        self._cfg["autostart_enabled"] = self.autostart_cb.isChecked()
         self._cfg["theme"] = self.theme_combo.currentData() or themes.DEFAULT_THEME
         self._cfg["countdown_enabled"] = self.countdown_cb.isChecked()
         self._cfg["countdown_seconds"] = config.clamp_countdown(self.countdown_spin.value())
+
+        # Apply autostart first so a UAC denial can downgrade autostart_admin
+        # before we persist.
+        want_enable = self.autostart_cb.isChecked()
+        want_admin = want_enable and self.autostart_admin_cb.isChecked()
+        final_admin, warn = self._apply_autostart(want_enable, want_admin)
+        self._cfg["autostart_enabled"] = want_enable
+        self._cfg["autostart_admin"] = final_admin
+
         try:
             config.save(self._cfg)
         except OSError as e:
             QMessageBox.critical(self, "保存失败", f"无法写入配置文件:\n{e}")
             return
 
-        try:
-            if self._cfg["autostart_enabled"]:
-                autostart.enable()
-            else:
-                autostart.disable()
-        except OSError as e:
-            QMessageBox.warning(
-                self, "自启设置失败", f"配置已保存,但写入注册表失败:\n{e}"
-            )
+        if warn:
+            QMessageBox.warning(self, "自启设置", warn)
+
         # Theme is already applied live; OK just persists. Update _original_theme so
         # done() doesn't try to revert.
         self._original_theme = self._cfg["theme"]

@@ -24,6 +24,7 @@ a = Analysis(
         'shutstart.__main__',
         'shutstart.app',
         'shutstart.autostart',
+        'shutstart.autostart_task',
         'shutstart.config',
         'shutstart.killer',
         'shutstart.launcher',

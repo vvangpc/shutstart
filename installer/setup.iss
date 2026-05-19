@@ -3,7 +3,7 @@
 ; Output: dist\ShutStart-Setup.exe
 
 #define MyAppName "ShutStart"
-#define MyAppVersion "1.1.1"
+#define MyAppVersion "1.2.0"
 #define MyAppPublisher "ShutStart"
 #define MyAppExeName "ShutStart.exe"
 
@@ -62,3 +62,7 @@ Filename: "{app}\{#MyAppExeName}"; Parameters: "--settings"; \
 [UninstallRun]
 ; Best-effort: close any running ShutStart instance before removing files.
 Filename: "{cmd}"; Parameters: "/C taskkill /F /IM {#MyAppExeName}"; Flags: runhidden; RunOnceId: "KillShutStart"
+; Best-effort: remove the scheduled logon task. Deleting a /rl highest task needs
+; admin; if the uninstaller runs as a normal user this will silently fail and the
+; user must remove it via Task Scheduler. The README documents that.
+Filename: "{cmd}"; Parameters: "/C schtasks /delete /tn ""\ShutStart\ShutStart Logon"" /f"; Flags: runhidden; RunOnceId: "DelShutStartTask"
