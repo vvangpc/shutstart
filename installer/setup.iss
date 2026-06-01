@@ -3,7 +3,7 @@
 ; Output: dist\ShutStart-Setup.exe
 
 #define MyAppName "ShutStart"
-#define MyAppVersion "1.2.0"
+#define MyAppVersion "1.3.0"
 #define MyAppPublisher "ShutStart"
 #define MyAppExeName "ShutStart.exe"
 

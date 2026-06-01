@@ -33,7 +33,9 @@ log = logging.getLogger(__name__)
 class _ARow:
     item: dict
     check: QCheckBox
-    running_count: int
+    status_label: QLabel
+    running: bool = False
+    count: int = 0
 
 
 @dataclass
@@ -58,7 +60,7 @@ class MainDialog(QDialog):
         self.resize(*remembered) if remembered else self.resize(760, 440)
         self._a_rows: list[_ARow] = []
         self._b_rows: list[_BRow] = []
-        self._scan = killer.scan(self._cfg.get("a_list", []))
+        self._scan = killer.ScanResult()
 
         outer = QVBoxLayout(self)
 
@@ -81,18 +83,27 @@ class MainDialog(QDialog):
         splitter.setSizes([380, 380])
         outer.addWidget(splitter, 1)
 
-        # Bottom row: countdown label (left) + buttons (right).
+        # Bottom row: countdown (left) · 刷新 (center) · 确认/取消 (right).
+        # 刷新/确认/取消 share one width so the three buttons match in size; the
+        # theme's button padding/min-height already keeps them the same height.
+        BTN_W = 100
         bottom = QHBoxLayout()
         self.countdown_label = QLabel("")
         self.countdown_label.setStyleSheet("background: transparent; color: #888;")
         bottom.addWidget(self.countdown_label, 0, Qt.AlignLeft | Qt.AlignVCenter)
         bottom.addStretch(1)
+        refresh_btn = QPushButton("⟳ 刷新")
+        refresh_btn.setFixedWidth(BTN_W)
+        refresh_btn.setToolTip("立即重新检测进程运行状态")
+        refresh_btn.clicked.connect(self._refresh_a_status)
+        bottom.addWidget(refresh_btn)
+        bottom.addStretch(1)
         confirm_btn = QPushButton("确认")
         confirm_btn.setDefault(True)
-        confirm_btn.setMinimumWidth(110)
+        confirm_btn.setFixedWidth(BTN_W)
         confirm_btn.clicked.connect(self._on_confirm)
         cancel_btn = QPushButton("取消")
-        cancel_btn.setMinimumWidth(80)
+        cancel_btn.setFixedWidth(BTN_W)
         cancel_btn.clicked.connect(self.reject)
         bottom.addWidget(confirm_btn)
         bottom.addWidget(cancel_btn)
@@ -112,6 +123,17 @@ class MainDialog(QDialog):
             self._countdown_timer.start()
         else:
             self.countdown_label.setVisible(False)
+
+        # Live A-process rescan. At boot ShutStart can start *before* the
+        # remote-desktop app it's meant to close, so a one-shot scan misses it
+        # and the user would have to restart ShutStart. Re-scan on a timer (and
+        # via the 刷新 button) so a late-appearing process shows up — and gets
+        # auto-checked — without a restart.
+        self._scan_timer = QTimer(self)
+        self._scan_timer.setInterval(2000)
+        self._scan_timer.timeout.connect(self._refresh_a_status)
+        self._refresh_a_status()
+        self._scan_timer.start()
 
     # -------------------- A group (left) --------------------
     def _build_a_group(self) -> QGroupBox:
@@ -143,25 +165,19 @@ class MainDialog(QDialog):
         inner_layout.setSpacing(4)
 
         for item in a_items:
-            count = self._scan.count(item["id"])
-            running = count > 0
             row = QHBoxLayout()
             cb = QCheckBox(item.get("display_name", "(未命名)"))
-            cb.setChecked(bool(item.get("default_checked", True)) and running)
-            cb.setEnabled(running)
-            if running:
-                status = f"运行中 ({count} 个实例)" if count > 1 else "运行中"
-                status_label = QLabel(f"({status})")
-                status_label.setStyleSheet("color: #2a7f3e; background: transparent;")
-            else:
-                status_label = QLabel("(未运行)")
-                status_label.setStyleSheet("color: #999; background: transparent;")
+            cb.setEnabled(False)  # state filled in by _refresh_a_status
+            status_label = QLabel("(检测中…)")
+            status_label.setStyleSheet("color: #999; background: transparent;")
             status_label.setFixedWidth(140)
             status_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
             row.addWidget(cb, 1)
             row.addWidget(status_label, 0)
             inner_layout.addLayout(row)
-            self._a_rows.append(_ARow(item=item, check=cb, running_count=count))
+            self._a_rows.append(
+                _ARow(item=item, check=cb, status_label=status_label)
+            )
 
         inner_layout.addStretch(1)
         scroll.setWidget(inner)
@@ -236,6 +252,42 @@ class MainDialog(QDialog):
         lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         return lbl
 
+    # -------------------- Live rescan --------------------
+    def _refresh_a_status(self) -> None:
+        """Re-scan A-list processes and reflect live state in each row.
+
+        Checkbox enabled/checked state is only touched when a row's running
+        state actually flips, so a periodic refresh never clobbers a choice the
+        user made by hand. A newly-detected process is auto-checked per its
+        default, so the boot-time "close it" intent still fires for an app that
+        started after ShutStart did.
+        """
+        if not self._a_rows:
+            return
+        self._scan = killer.scan([row.item for row in self._a_rows])
+        for row in self._a_rows:
+            count = self._scan.count(row.item["id"])
+            running = count > 0
+            was_running = row.running
+            row.count = count
+            row.running = running
+
+            if running:
+                text = f"运行中 ({count} 个实例)" if count > 1 else "运行中"
+                row.status_label.setText(f"({text})")
+                row.status_label.setStyleSheet(
+                    "color: #2a7f3e; background: transparent;"
+                )
+            else:
+                row.status_label.setText("(未运行)")
+                row.status_label.setStyleSheet("color: #999; background: transparent;")
+
+            if running != was_running:
+                row.check.setEnabled(running)
+                row.check.setChecked(
+                    running and bool(row.item.get("default_checked", True))
+                )
+
     # -------------------- Countdown --------------------
     def _update_countdown_label(self) -> None:
         if not self._countdown_enabled:
@@ -287,22 +339,24 @@ class MainDialog(QDialog):
             self._resume_countdown_fresh()
 
     def _on_confirm(self) -> None:
-        a_to_kill: list = []
+        names_to_kill: set[str] = set()
         for row in self._a_rows:
-            if row.check.isChecked() and row.running_count > 0:
-                a_to_kill.extend(self._scan.by_id.get(row.item["id"], []))
+            if row.check.isChecked() and row.running:
+                names_to_kill |= killer.item_names(row.item)
 
         b_to_launch: list[tuple[dict, bool]] = []
         for row in self._b_rows:
             if row.check.isChecked() and row.exe_exists:
                 b_to_launch.append((row.item, row.admin_check.isChecked()))
 
-        if not a_to_kill and not b_to_launch:
+        if not names_to_kill and not b_to_launch:
             QMessageBox.information(self, "没有可执行的操作", "你没有勾选任何项目。")
             return
 
-        # User is committing to an action — stop the auto-cancel countdown.
+        # User is committing to an action — stop the auto-cancel countdown and
+        # the live rescan (it would race the kill sweep).
         self._pause_countdown()
+        self._scan_timer.stop()
 
         progress = QProgressDialog("正在执行…", "", 0, 0, self)
         progress.setWindowTitle("ShutStart")
@@ -314,7 +368,7 @@ class MainDialog(QDialog):
 
         QApplication.processEvents()
 
-        kill_report = killer.kill(a_to_kill) if a_to_kill else None
+        kill_report = killer.kill_by_names(names_to_kill) if names_to_kill else None
         launch_report = launcher.launch_many(b_to_launch) if b_to_launch else None
 
         progress.close()
@@ -323,6 +377,8 @@ class MainDialog(QDialog):
     def done(self, result: int) -> None:
         if self._countdown_timer.isActive():
             self._countdown_timer.stop()
+        if self._scan_timer.isActive():
+            self._scan_timer.stop()
         try:
             config.set_window_size(DIALOG_NAME, self.width(), self.height())
         except OSError:

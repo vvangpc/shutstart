@@ -174,6 +174,15 @@ class AItemEditor(QDialog):
             self.proc_edit.setPlainText("\n".join(item.get("process_names", [])))
         form.addRow("进程名:", self.proc_edit)
 
+        hint = QLabel(
+            ".exe 可省略,大小写不敏感。远控类请把守护/服务进程一并填上 "
+            "(如 SunloginClient.exe + SunloginRemoteDesk.exe + AweSun.exe),"
+            "否则守护进程会立刻把主程序重新拉起,关不干净。"
+        )
+        hint.setStyleSheet("color:#888; font-size:9pt;")
+        hint.setWordWrap(True)
+        form.addRow("", hint)
+
         pick_btn = QPushButton("从运行中的进程选择…")
         pick_btn.clicked.connect(self._pick_processes)
         form.addRow("", pick_btn)
